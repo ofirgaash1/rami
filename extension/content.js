@@ -1,11 +1,19 @@
 // Content script injected on rami-levy.co.il catalog pages.
-// Automatically sorts product cards by their price per 100 grams.
+// Automatically sorts product cards by their price per 100 grams and keeps
+// the list ordered as infinite scrolling fetches more items.
 
 const CONTAINER_SELECTOR = '.online-catalog-wrap';
 const PRODUCT_CARD_SELECTOR = '.product-flex';
 
-let observer = null;
+let containerElement = null;
+let containerObserver = null;
+let documentObserver = null;
 let isSorting = false;
+let scheduledSortHandle = null;
+const scheduleCallback =
+  typeof window.requestAnimationFrame === 'function'
+    ? window.requestAnimationFrame.bind(window)
+    : (cb) => window.setTimeout(cb, 50);
 
 /**
  * Extracts the price per 100 grams from the provided text.
@@ -54,7 +62,7 @@ function extractPricePer100g(card) {
  * Sorts product cards within the container by their price per 100 grams.
  */
 function sortProductCards() {
-  const container = document.querySelector(CONTAINER_SELECTOR);
+  const container = ensureContainer();
   if (!container || isSorting) {
     return;
   }
@@ -76,20 +84,56 @@ function sortProductCards() {
 }
 
 /**
- * Sets up a MutationObserver so we can re-sort whenever infinite scrolling
- * adds new product cards to the DOM.
+ * Schedules a sort on the next animation frame (or timeout fallback) so that
+ * multiple DOM mutations collapse into a single reorder.
  */
-function setupObserver() {
-  if (observer) {
+function scheduleSort() {
+  if (scheduledSortHandle !== null || isSorting) {
     return;
   }
 
-  const container = document.querySelector(CONTAINER_SELECTOR);
-  if (!container) {
+  scheduledSortHandle = scheduleCallback(() => {
+    scheduledSortHandle = null;
+    sortProductCards();
+  });
+}
+
+/**
+ * Ensures we keep a reference to the catalog container and (re)attaches the
+ * mutation observer whenever the site swaps out that element.
+ * @returns {Element | null}
+ */
+function ensureContainer() {
+  const nextContainer = document.querySelector(CONTAINER_SELECTOR);
+  if (!nextContainer) {
+    detachContainerObserver();
+    containerElement = null;
+    return null;
+  }
+
+  if (containerElement === nextContainer) {
+    return containerElement;
+  }
+
+  containerElement = nextContainer;
+  attachContainerObserver();
+  return containerElement;
+}
+
+function detachContainerObserver() {
+  if (containerObserver) {
+    containerObserver.disconnect();
+    containerObserver = null;
+  }
+}
+
+function attachContainerObserver() {
+  detachContainerObserver();
+  if (!containerElement) {
     return;
   }
 
-  observer = new MutationObserver((mutations) => {
+  containerObserver = new MutationObserver((mutations) => {
     if (isSorting) {
       return;
     }
@@ -108,19 +152,38 @@ function setupObserver() {
     });
 
     if (shouldResort) {
-      sortProductCards();
+      scheduleSort();
     }
   });
 
-  observer.observe(container, { childList: true, subtree: true });
+  containerObserver.observe(containerElement, {
+    childList: true,
+    subtree: true,
+  });
+}
+
+function setupDocumentObserver() {
+  if (documentObserver || !document.body) {
+    return;
+  }
+
+  documentObserver = new MutationObserver(() => {
+    const container = ensureContainer();
+    if (container) {
+      scheduleSort();
+    }
+  });
+
+  documentObserver.observe(document.body, { childList: true, subtree: true });
 }
 
 /**
  * Initializes the sorter when the page is ready.
  */
 function init() {
-  sortProductCards();
-  setupObserver();
+  ensureContainer();
+  setupDocumentObserver();
+  scheduleSort();
 }
 
 if (document.readyState === 'loading') {
