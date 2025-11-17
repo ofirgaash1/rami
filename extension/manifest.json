@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Rami Levy Price-Per-100g Sorter",
+  "version": "1.0.0",
+  "description": "Automatically sorts products on rami-levy.co.il by price per 100 grams.",
+  "content_scripts": [
+    {
+      "matches": ["https://www.rami-levy.co.il/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
