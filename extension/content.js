@@ -1,9 +1,11 @@
 // Content script injected on rami-levy.co.il catalog pages.
-// Automatically sorts product cards by their price per 100 grams and keeps
+// Automatically sorts product cards by their price per 100 grams/milliliters and keeps
 // the list ordered as infinite scrolling fetches more items.
 
 const CONTAINER_SELECTOR = '.online-catalog-wrap';
 const PRODUCT_CARD_SELECTOR = '.product-flex';
+const PRICE_PER_100_REGEX =
+  /([\d.]+)\s*(?:₪)?\s*ל?-?\s*100\s*(?:גרם|מ["״']?ל)/;
 
 let containerElement = null;
 let containerObserver = null;
@@ -16,8 +18,8 @@ const scheduleCallback =
     : (cb) => window.setTimeout(cb, 50);
 
 /**
- * Extracts the price per 100 grams from the provided text.
- * The site uses strings such as "2.63 ל-100 גרם".
+ * Extracts the price per 100 grams/milliliters from the provided text.
+ * The site uses strings such as "2.63 ל-100 גרם" or "1.04 ל-100 מ"ל".
  * @param {string} text
  * @returns {number} price per 100 grams or Infinity when not found
  */
@@ -27,7 +29,7 @@ function parsePriceFromText(text) {
   }
 
   const normalized = text.replace(/,/g, '.');
-  const match = normalized.match(/([\d.]+)\s*(?:₪)?\s*ל?-?\s*100\s*גרם/);
+  const match = normalized.match(PRICE_PER_100_REGEX);
   if (!match) {
     return Infinity;
   }
@@ -37,7 +39,8 @@ function parsePriceFromText(text) {
 }
 
 /**
- * Finds the text that contains the price per 100 grams within a product card
+ * Finds the text that contains the price per 100 grams/milliliters within a
+ * product card
  * and converts it into a numeric value.
  * @param {Element} card
  * @returns {number}
@@ -50,7 +53,7 @@ function extractPricePer100g(card) {
   const spans = card.querySelectorAll('span');
   for (const span of spans) {
     const text = span.textContent?.trim();
-    if (text && /100\s*גרם/.test(text)) {
+    if (text && PRICE_PER_100_REGEX.test(text)) {
       return parsePriceFromText(text);
     }
   }
@@ -59,7 +62,8 @@ function extractPricePer100g(card) {
 }
 
 /**
- * Sorts product cards within the container by their price per 100 grams.
+ * Sorts product cards within the container by their price per 100 grams/
+ * milliliters.
  */
 function sortProductCards() {
   const container = ensureContainer();
